@@ -67,14 +67,8 @@ def comp_joint_prob(uid2refs, uid2hyps):
         hyps = uid2hyps[uid]
         abs_frmdiff += abs(len(refs) - len(hyps))
         min_len = min(len(refs), len(hyps))
-        #将ref和hyp采样到min_len长度
-        idx = np.array([i for i in range(min_len)])
-        ref_idx = (np.rint(idx * (len(refs) / min_len))).astype(int)
-        hyp_idx = (np.rint(idx * (len(hyps) / min_len))).astype(int)
-        ref_idx = np.clip(ref_idx, 0, len(refs) - 1)
-        refs = np.array(refs)[ref_idx].tolist()
-        hyp_idx = np.clip(hyp_idx, 0, len(hyps) - 1)
-        hyps = np.array(hyps)[hyp_idx].tolist()
+        refs = refs[:min_len]
+        hyps = hyps[:min_len]
         cnts.update(zip(refs, hyps))
     tot = sum(cnts.values())
 
@@ -93,8 +87,11 @@ def comp_joint_prob(uid2refs, uid2hyps):
 def read_phn(tsv_path, rm_stress=True):
     uid2phns = {}
     with open(tsv_path) as f:
-        for uid,line in enumerate(f):
-            phns = line.rstrip().split(" ")
+        for line in f:
+            uid, phns = line.rstrip().split("\t")
+            phns = phns.split(",")
+            if rm_stress:
+                phns = [re.sub("[0-9]", "", phn) for phn in phns]
             uid2phns[uid] = phns
     return uid2phns
 
@@ -103,12 +100,11 @@ def read_lab(tsv_path, lab_path, pad_len=0, upsample=1):
     """
     tsv is needed to retrieve the uids for the labels
     """
-    # with open(tsv_path) as f:
-    #     f.readline()
-    #     uids = [op.splitext(op.basename(line.rstrip().split()[0]))[0] for line in f]
+    with open(tsv_path) as f:
+        f.readline()
+        uids = [op.splitext(op.basename(line.rstrip().split()[0]))[0] for line in f]
     with open(lab_path) as f:
         labs_list = [pad(line.rstrip().split(), pad_len).repeat(upsample) for line in f]
-    uids = [i for i in range(len(labs_list))]
     assert len(uids) == len(labs_list)
     return dict(zip(uids, labs_list))
 
@@ -147,7 +143,6 @@ def main_phn_lab(
     lab_name,
     lab_sets,
     phn_dir,
-    phn_name,
     phn_sets,
     pad_len=0,
     upsample=1,
@@ -155,7 +150,7 @@ def main_phn_lab(
 ):
     uid2refs = {}
     for s in phn_sets:
-        uid2refs.update(read_phn(f"{phn_dir}/{s}.{phn_name}"))
+        uid2refs.update(read_phn(f"{phn_dir}/{s}.tsv"))
 
     uid2hyps = {}
     tsv_dir = lab_dir if tsv_dir is None else tsv_dir
@@ -191,19 +186,6 @@ def _main(uid2refs, uid2hyps, verbose):
         "utt miss": len(skipped),
     }
     print(tabulate([outputs.values()], outputs.keys(), floatfmt=".4f"))
-    print(f"x_axis label: {sorted(ref2pid.keys())}")
-    print(f"y_axis label: {sorted(hyp2lid.keys())}")
-    np.set_printoptions(threshold=np.inf)
-    print(p_xy)
-    if(p_xy.shape[0]==2 and p_xy.shape[1] == 2):
-        p_0 = p_xy[0][0]/(p_xy[0][0]+p_xy[1][0])
-        r_0 = p_xy[0][0]/(p_xy[0][0]+p_xy[0][1])
-        f1_0 = 2*p_0*r_0 / (p_0+r_0)
-        print(f"(0,0)Precision:{p_0}, Recall:{r_0}, F1:{f1_0}")
-        p_1 = p_xy[1][1] / (p_xy[1][1] + p_xy[0][1])
-        r_1 = p_xy[1][1] / (p_xy[1][1] + p_xy[1][0])
-        f1_1 = 2 * p_1 * r_1 / (p_1 + r_1)
-        print(f"(1,1)Precision:{p_1}, Recall:{r_1}, F1:{f1_1}")
 
 
 if __name__ == "__main__":
@@ -220,9 +202,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--phn_dir",
         default="/checkpoint/wnhsu/data/librispeech/960h/fa/raw_phn/phone_frame_align_v1",
-    )
-    parser.add_argument(
-        "--phn_name", type=str, default="phn",
     )
     parser.add_argument(
         "--phn_sets", default=["dev-clean", "dev-other"], type=str, nargs="+"
@@ -255,7 +234,6 @@ if __name__ == "__main__":
             args.lab_name,
             args.lab_sets,
             args.phn_dir,
-            args.phn_name,
             args.phn_sets,
             args.pad_len,
             args.upsample,

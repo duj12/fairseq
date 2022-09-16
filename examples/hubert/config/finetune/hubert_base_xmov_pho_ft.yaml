@@ -9,7 +9,7 @@ common:
 
 checkpoint:
   save_interval: 1
-  #save_interval_updates: 2000
+  save_interval_updates: 2000
   keep_interval_updates: 1
   #keep_best_checkpoints: 5
   no_epoch_checkpoints: true
@@ -29,15 +29,20 @@ task:
   fine_tuning: true
   label_dir: ???
   normalize: false  # must be consistent with pre-training
-  labels: ["ph"]
+  labels: ["phn"]
   single_target: true
+  max_sample_size: 250000  # 这个是实际训练时最大的chunk_size，超长音频会被切分, 只留下一个chunk用于训练
+  # max_keep_size: 320000  # 这个是保留音频的最大采样点数，超过的音频不参与训练
+  min_sample_size: 16000  # 这个是保留音频的最小采样点数，低于的音频不参与训练
+  pad_audio: false
+  random_crop: true
 
 dataset:
   num_workers: 0
-  max_tokens: 1600000
+  max_tokens: 1400000
   validate_after_updates: ${model.freeze_finetune_updates}
   validate_interval: 1
-  #validate_interval_updates: 10000
+  validate_interval_updates: 10000
   train_subset: train
   valid_subset: valid
 
@@ -47,11 +52,11 @@ criterion:
   report_accuracy: true
 
 optimization:
-  max_update: 100000
+  max_update: 1000000
   lr: [2e-4]
   clip_norm: 10.0
   sentence_avg: false
-  update_freq: [1]
+  update_freq: [8]
 
 optimizer:
   _name: adam

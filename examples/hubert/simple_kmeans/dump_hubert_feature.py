@@ -100,7 +100,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     logger.info(args)
 
-    #main(**vars(args))
-
-    #   采用多线程同时生成多个批次的特征
-    thread_main(**vars(args))
+    if(args.rank < args.nshard):
+        main(**vars(args))
+    else:  #采用多线程同时生成多个批次的特征
+        thread_main(**vars(args))

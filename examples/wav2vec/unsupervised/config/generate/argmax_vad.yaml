@@ -1,0 +1,23 @@
+# @package _group_
+
+fairseq:
+  task:
+    _name: unpaired_audio_text
+    labels: vad
+    data: ???
+    sort_by_length: false
+    shuffle: false
+    text_data: ''
+
+  common_eval:
+    path: ???
+    quiet: true
+
+  dataset:
+    gen_subset: valid
+    batch_size: 1
+
+w2l_decoder: ARGMAX
+post_process: silence
+only_dump_generator_feats: true
+generator_feats_dir: ${results_path}

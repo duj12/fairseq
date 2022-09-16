@@ -640,6 +640,13 @@ class OptimizationConfig(FairseqDataclass):
 
 @dataclass
 class CheckpointConfig(FairseqDataclass):
+    load_state_dict_strict: Optional[bool] = field(
+        default=True,
+        metadata={"help": "Set False if don't need to load state dict in strict mode."}
+    )
+    remove_state_dict_keys: List[str] = field(
+        default_factory=lambda: [], metadata={"help": "the keys deleted when loading state dict."}
+    )
     save_dir: str = field(
         default="checkpoints", metadata={"help": "path to save checkpoints"}
     )

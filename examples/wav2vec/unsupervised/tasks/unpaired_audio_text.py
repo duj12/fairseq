@@ -302,7 +302,7 @@ class UnpairedAudioText(FairseqTask):
             split=split,
             min_length=3,
             max_length=task_cfg.max_length,
-            labels=None if has_unpaired_text else task_cfg.labels,
+            labels=task_cfg.labels,  # None if has_unpaired_text else task_cfg.labels,
             label_dict=self.target_dictionary,
             shuffle=getattr(task_cfg, "shuffle", True),
             sort_by_length=task_cfg.sort_by_length,

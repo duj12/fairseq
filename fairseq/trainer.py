@@ -564,9 +564,14 @@ class Trainer(object):
                         )
                         layer._prune_fc_layer(remove_index=remove_index)
                     logger.info(self.model)
-
+                strict_mode=True
+                if hasattr(self.cfg.checkpoint, 'load_state_dict_strict'):
+                    strict_mode = self.cfg.checkpoint.load_state_dict_strict
+                if hasattr(self.cfg.checkpoint, 'remove_state_dict_keys'):
+                    for del_key in  self.cfg.checkpoint.remove_state_dict_keys:
+                        del(state["model"][del_key])
                 self.model.load_state_dict(
-                    state["model"], strict=True, model_cfg=self.cfg.model
+                    state["model"], strict=strict_mode, model_cfg=self.cfg.model
                 )
                 # save memory for later steps
                 del state["model"]

@@ -3,12 +3,12 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, auto
 import math
 import numpy as np
 from typing import Tuple, List, Optional, Dict
-
+from omegaconf import II
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -42,6 +42,18 @@ class SegmentationConfig(FairseqDataclass):
 
 @dataclass
 class Wav2vec_UConfig(FairseqDataclass):
+    # 添加generator特征输出
+    only_dump_generator_feats: Optional[bool] = field(
+        default=None,
+        metadata={
+            "help": "set true to dump generator features only, won't decode."
+        },
+    )
+    generator_feats_dir: Optional[str] = field(
+        default=None,
+        metadata={"help": "where to store generator features."},
+    )
+
     discriminator_kernel: int = 3
     discriminator_dilation: int = 1
     discriminator_dim: int = 256
@@ -330,6 +342,11 @@ class Generator(nn.Module):
             result["inter_x"] = inter_x
 
         dense_x = self.dropout(dense_x)
+        if self.cfg.only_dump_generator_feats:
+            result["dense_x"] = dense_x
+            result["token_x"] = None
+            result["dense_padding_mask"] = dense_padding_mask
+            return result
 
         dense_x = self.proj(dense_x)
         if self.stride > 1:
@@ -397,7 +414,7 @@ class Wav2vec_U(BaseFairseqModel):
 
         alpha = torch.rand(real_data.size(0), 1, 1)
         alpha = alpha.expand(real_data.size())
-        alpha = alpha.to(real_data.device)
+        alpha = torch.tensor(alpha.to(real_data.device), dtype=real_data.dtype)
 
         interpolates = alpha * real_data + ((1 - alpha) * fake_data)
 
@@ -571,7 +588,11 @@ class Wav2vec_U(BaseFairseqModel):
         orig_size = features.size(0) * features.size(1) - padding_mask.sum()
 
         gen_result = self.generator(features, random_label, padding_mask)
-
+        if self.cfg.only_dump_generator_feats:
+            return {
+                "generator_feats": gen_result["dense_x"],
+                "padding_mask": gen_result["dense_padding_mask"],
+            }
         orig_dense_x, token_x = gen_result["dense_x"], gen_result["token_x"]
         orig_dense_padding_mask = gen_result["dense_padding_mask"]
 

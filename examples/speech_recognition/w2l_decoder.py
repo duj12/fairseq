@@ -75,12 +75,16 @@ class W2lDecoder(object):
             k: v for k, v in sample["net_input"].items() if k != "prev_output_tokens"
         }
         emissions = self.get_emissions(models, encoder_input)
+        if models[0].cfg['only_dump_generator_feats']:
+            return emissions
         return self.decode(emissions)
 
     def get_emissions(self, models, encoder_input):
         """Run encoder and normalize emissions"""
         model = models[0]
         encoder_out = model(**encoder_input)
+        if model.cfg['only_dump_generator_feats']:
+            return encoder_out["generator_feats"]
         if hasattr(model, "get_logits"):
             emissions = model.get_logits(encoder_out) # no need to normalize emissions
         else:
@@ -92,6 +96,20 @@ class W2lDecoder(object):
         idxs = (g[0] for g in it.groupby(idxs))
         idxs = filter(lambda x: x != self.blank, idxs)
         return torch.LongTensor(list(idxs))
+
+class W2lArgmaxDecoder(W2lDecoder):
+    def __init__(self, args, tgt_dict):
+        super().__init__(args, tgt_dict)
+    def get_tokens(self, idxs):
+        idxs = filter(lambda x: x != self.blank, idxs)
+        return torch.LongTensor(list(idxs))
+    def decode(self, emissions):
+        B, T, N = emissions.size()
+        idxs = torch.argmax(emissions, dim=-1, keepdim=True)
+        return [
+            [{"tokens": self.get_tokens(idxs[b].tolist()), "score": 0}]
+            for b in range(B)
+        ]
 
 
 class W2lViterbiDecoder(W2lDecoder):

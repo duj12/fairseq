@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 
 
 class DecoderType(Enum):
+    ARGMAX = auto()
     VITERBI = auto()
     KENLM = auto()
     FAIRSEQ = auto()
@@ -49,6 +50,18 @@ class DecoderType(Enum):
 @dataclass
 class UnsupGenerateConfig(FairseqDataclass):
     fairseq: FairseqConfig = FairseqConfig()
+    #添加generator特征输出
+    only_dump_generator_feats: Optional[bool] = field(
+        default=None,
+        metadata={
+            "help": "set true to dump generator features only, won't decode."
+        },
+    )
+    generator_feats_dir: Optional[str] = field(
+        default=None,
+        metadata={"help": "where to store generator features."},
+    )
+
     lm_weight: float = field(
         default=2.0,
         metadata={"help": "language model weight"},
@@ -345,6 +358,10 @@ def generate(cfg: UnsupGenerateConfig, models, saved_cfg, use_cuda):
             from examples.speech_recognition.w2l_decoder import W2lViterbiDecoder
 
             return W2lViterbiDecoder(cfg, task.target_dictionary)
+        elif w2l_decoder == DecoderType.ARGMAX:
+            from examples.speech_recognition.w2l_decoder import W2lArgmaxDecoder
+
+            return W2lArgmaxDecoder(cfg, task.target_dictionary)
         elif w2l_decoder == DecoderType.KENLM:
             from examples.speech_recognition.w2l_decoder import W2lKenLMDecoder
 
@@ -364,7 +381,7 @@ def generate(cfg: UnsupGenerateConfig, models, saved_cfg, use_cuda):
             )
         else:
             raise NotImplementedError(
-                "only wav2letter decoders with (viterbi, kenlm, fairseqlm) options are supported at the moment but found "
+                "only wav2letter decoders with (viterbi, argmax, kenlm, fairseqlm) options are supported at the moment but found "
                 + str(w2l_decoder)
             )
 
@@ -410,6 +427,10 @@ def generate(cfg: UnsupGenerateConfig, models, saved_cfg, use_cuda):
             viterbi_transcript = vf.readlines()
             viterbi_transcript = [v.rstrip().split() for v in viterbi_transcript]
 
+    #将generator_feats导出的相关参数传到models
+    models[0].cfg['only_dump_generator_feats'] = cfg.only_dump_generator_feats
+    models[0].cfg['generator_feats_dir'] = cfg.generator_feats_dir
+
     gen_timer.start()
 
     start = 0
@@ -438,6 +459,16 @@ def generate(cfg: UnsupGenerateConfig, models, saved_cfg, use_cuda):
         logger.info("Finished extracting features")
 
     with progress_bar.build_progress_bar(cfg.fairseq.common, itr) as t:
+        if cfg.only_dump_generator_feats and cfg.generator_feats_dir:
+            from npy_append_array import NpyAppendArray
+            feat_path = f"{cfg.generator_feats_dir}/{cfg.fairseq.dataset.gen_subset}.npy"
+            leng_path = f"{cfg.generator_feats_dir}/{cfg.fairseq.dataset.gen_subset}.len"
+
+            os.makedirs(cfg.generator_feats_dir, exist_ok=True)
+            if os.path.exists(feat_path):
+                os.remove(feat_path)
+            feat_f = NpyAppendArray(feat_path)
+            leng_f = open(leng_path, 'w', encoding='utf-8')
         for i, sample in enumerate(t):
             if i < start or i >= end:
                 continue
@@ -452,6 +483,13 @@ def generate(cfg: UnsupGenerateConfig, models, saved_cfg, use_cuda):
                 hypos, num_feats = gen_hypos(
                     generator, models, num_feats, sample, task, use_cuda
                 )
+            if cfg.only_dump_generator_feats and cfg.generator_feats_dir:
+                for hypo in hypos:
+                    feat_f.append(hypo.cpu().numpy())
+                    leng_f.write(f"{hypo.size(0)}\n")
+                    leng_f.flush()
+                continue  #直接跳到下一个example
+
 
             for i, sample_id in enumerate(sample["id"].tolist()):
                 if targets is not None:
@@ -619,6 +657,8 @@ def main(cfg: UnsupGenerateConfig, model=None):
         saved_cfg.task.sort_by_length = False
 
     gen_result = generate(cfg, models, saved_cfg, use_cuda)
+    if cfg.only_dump_generator_feats:
+        return None, 0
 
     wer = None
     if gen_result.lengths_t > 0:

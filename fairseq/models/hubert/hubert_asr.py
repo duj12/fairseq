@@ -6,7 +6,7 @@
 import contextlib
 from argparse import Namespace
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Optional, Tuple, List
 
 import torch
 import torch.nn as nn
@@ -23,6 +23,18 @@ from fairseq.tasks import FairseqTask
 @dataclass
 class HubertAsrConfig(FairseqDataclass):
     label_rate: float = II("task.label_rate")   # add to do frame-wise phoneme classification
+    # add intermediate loss: loss weight and layer number
+    # when calculating intermediate loss, the final_proj layer is shared.
+    intermediate_loss_weight: List[float] = field(
+        default_factory=lambda: [],
+        metadata={"help": "loss weight of each intermediate layer"},
+    )
+    #num==-1: only use last layer
+    intermediate_layer_num: int = field(
+        default=-1,
+        metadata={"help": "the number of layer used when calculate layer loss. 1-based"}
+    )
+
     w2v_path: str = field(default=MISSING, metadata={"help": "path to hubert model"})
     no_pretrained_weights: bool = field(
         default=False,
@@ -171,6 +183,24 @@ class HubertCtc(BaseFairseqModel):
         x = self.w2v_encoder(**kwargs)
         return x
 
+    def extract_features(
+        self,
+        source: torch.Tensor,
+        padding_mask: Optional[torch.Tensor] = None,
+        mask: bool = False,
+        ret_conv: bool = False,
+        output_layer: Optional[int] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        res = self.forward(
+            source=source,
+            padding_mask=padding_mask,
+            mask=mask,
+            features_only=True,
+            output_layer=output_layer,
+        )
+        feature = res["features"] if ret_conv else res["x"]
+        return feature, res["padding_mask"]
+
 
 @dataclass
 class HubertSeq2SeqConfig(HubertAsrConfig):
@@ -309,6 +339,8 @@ class HubertEncoder(FairseqEncoder):
             "source": source,
             "padding_mask": padding_mask,
             "mask": self.apply_mask and self.training,
+            "output_layer": None if 'output_layer' not in kwargs else kwargs['output_layer'],
+            "output_intermediate_layers": True if ('intermediate_layer_num' in kwargs and kwargs['intermediate_layer_num']>0 and self.training) else False,
         }
 
         ft = self.freeze_finetune_updates <= self.num_updates
@@ -316,14 +348,30 @@ class HubertEncoder(FairseqEncoder):
         with torch.no_grad() if not ft else contextlib.ExitStack():
             x, padding_mask = self.w2v_model.extract_features(**w2v_args)
 
+            if 'features_only' in kwargs and kwargs['features_only']:
+                return {"x": x, "encoder_padding_mask": padding_mask, "padding_mask": padding_mask}
+
+        if w2v_args['output_intermediate_layers']:
+            layer_results = x
+            outputs = []
+            for l in layer_results :
+                #注意：这里出来的layer_results本身就是TBC
+                # if tbc:
+                #     # B x T x C -> T x B x C
+                #     l = l.transpose(0, 1)
+                l = self.final_dropout(l)
+                if self.proj:
+                    l = self.proj(l)
+                outputs.append(l)
+            x = outputs
+
+        else:
             if tbc:
                 # B x T x C -> T x B x C
                 x = x.transpose(0, 1)
-
-        x = self.final_dropout(x)
-
-        if self.proj:
-            x = self.proj(x)
+            x = self.final_dropout(x)
+            if self.proj:
+                x = self.proj(x)
 
         return {
             "encoder_out": x,  # T x B x C

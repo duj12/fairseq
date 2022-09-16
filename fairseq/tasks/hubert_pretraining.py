@@ -136,7 +136,9 @@ class HubertPretrainingTask(FairseqTask):
 
         self.cfg = cfg
         self.fine_tuning = cfg.fine_tuning
-        self.use_multiple_frame_rate_label = cfg.use_multiple_frame_rate_label
+        self.use_multiple_frame_rate_label = False
+        if hasattr(cfg, 'use_multiple_frame_rate_label'):
+            self.use_multiple_frame_rate_label = cfg.use_multiple_frame_rate_label
 
         if cfg.fine_tuning:
             self.state.add_factory("target_dictionary", self.load_dictionaries)

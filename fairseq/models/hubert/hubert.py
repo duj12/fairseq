@@ -263,7 +263,9 @@ class HubertModel(BaseFairseqModel):
             conv_bias=cfg.conv_bias,
         )
         feature_ds_rate = np.prod([s for _, _, s in feature_enc_layers])
-        self.use_multiple_frame_rate_label = cfg.use_multiple_frame_rate_label
+        self.use_multiple_frame_rate_label = False
+        if hasattr(cfg, 'use_multiple_frame_rate_label'):
+            self.use_multiple_frame_rate_label = cfg.use_multiple_frame_rate_label
         if self.use_multiple_frame_rate_label == True :
             self.feat2tar_ratio = cfg.label_rate_list * feature_ds_rate / task_cfg.sample_rate
         else:
@@ -325,9 +327,14 @@ class HubertModel(BaseFairseqModel):
             logger.info("cannot find dictionary. assume will be used for fine-tuning")
         else:
             self.num_classes = [len(d) for d in dictionaries]
-            self.label_embs_concat = nn.Parameter(
-                torch.FloatTensor(sum(self.num_classes), final_dim)
-            )
+            if self.untie_final_proj:
+                self.label_embs_concat = nn.Parameter(
+                    torch.FloatTensor(sum(self.num_classes), final_dim)
+                )
+            else: #将不同标签的embedding进行绑定,需要确保多个标签的词典大小一致，这里取第一个标签的词典维度
+                self.label_embs_concat = nn.Parameter(
+                    torch.FloatTensor(len(dictionaries[0]), final_dim)
+                )
             nn.init.uniform_(self.label_embs_concat)
 
     def upgrade_state_dict_named(self, state_dict, name):
@@ -447,6 +454,7 @@ class HubertModel(BaseFairseqModel):
         mask: bool = True,
         features_only: bool = False,
         output_layer: Optional[int] = None,
+        **kwargs,
     ) -> Dict[str, torch.Tensor]:
         """output layer is 1-based"""
         features = self.forward_features(source)
@@ -479,13 +487,17 @@ class HubertModel(BaseFairseqModel):
         # x: (B, T, D), float
         # padding_mask: (B, T), bool
         # mask_indices: (B, T), bool
-        x, _ = self.encoder(
+        x, layer_results = self.encoder(
             x,
             padding_mask=padding_mask,
             layer=None if output_layer is None else output_layer - 1,
         )
 
         if features_only:
+            if 'output_intermediate_layers' in kwargs:
+                if kwargs['output_intermediate_layers']:
+                    layer_results = [x for x, _, _ in layer_results] # extract x of each layer
+                    return {"x": layer_results, "padding_mask": padding_mask, "features": features}
             return {"x": x, "padding_mask": padding_mask, "features": features}
 
         def compute_pred(proj_x, target, label_embs):
@@ -546,6 +558,7 @@ class HubertModel(BaseFairseqModel):
         mask: bool = False,
         ret_conv: bool = False,
         output_layer: Optional[int] = None,
+        **kwargs,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         res = self.forward(
             source,
@@ -553,6 +566,7 @@ class HubertModel(BaseFairseqModel):
             mask=mask,
             features_only=True,
             output_layer=output_layer,
+            **kwargs,
         )
         feature = res["features"] if ret_conv else res["x"]
         return feature, res["padding_mask"]

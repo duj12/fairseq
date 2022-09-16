@@ -76,20 +76,48 @@ class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
         2) the sample size, which is used as the denominator for the gradient
         3) logging outputs to display while training
         """
-        net_output = model(**sample["net_input"])
+        net_output = model(**sample["net_input"], **(model.cfg))
         # make sure the net_output matches the target in length
-        if hasattr(model, 'w2v_encoder'):  #对于hubert_asr类型，里面的encoder输出为TBC,需要转为BTC
-            net_output["encoder_out"] = net_output["encoder_out"].transpose(0, 1) # T x B x C -> B x T x C
-        feat_tsz = net_output["encoder_out"].size(1)  #B x T x C
-        targ_tsz = sample["target"].size(1)  # B x T
-        if(feat_tsz != targ_tsz):  #分类任务，标签数量和特征数量接近，不会差很多
-            import torch
-            target_inds = torch.arange(feat_tsz).long() #对标签进行采样
-            # 这里为了避免对齐之后的标签越界，将超过标签长度的idx替换成最后一个标签序号
-            target_inds[target_inds >= targ_tsz] = targ_tsz - 1
-            sample["target"] = sample["target"][:, target_inds]
+        if isinstance(net_output["encoder_out"], list):
+            if hasattr(model, 'w2v_encoder'):  # 对于hubert_asr类型，里面的encoder输出为TBC,需要转为BTC
+                net_output["encoder_out"] = [x.transpose(0, 1) for x in net_output["encoder_out"]]  # T x B x C -> B x T x C
+            feat_tsz = net_output["encoder_out"][-1].size(1)  # B x T x C
+            targ_tsz = sample["target"].size(1)  # B x T
+            if (feat_tsz != targ_tsz):  # 分类任务，标签数量和特征数量接近，不会差很多
+                import torch
+                target_inds = torch.arange(feat_tsz).long()  # 对标签进行采样
+                # 这里为了避免对齐之后的标签越界，将超过标签长度的idx替换成最后一个标签序号
+                target_inds[target_inds >= targ_tsz] = targ_tsz - 1
+                sample["target"] = sample["target"][:, target_inds]
 
-        loss, nll_loss = self.compute_loss(model, net_output, sample, reduce=reduce)
+            total_loss_layers = min(model.cfg['intermediate_layer_num'],len(net_output["encoder_out"]))
+            loss, nll_loss = 0, 0
+            net_output_list = net_output["encoder_out"]
+            loss_weight_list = model.cfg['intermediate_loss_weight']
+            for l in range(2,total_loss_layers+1):  #从后往前计算，倒数第二层和倒数第total_loss_layers层
+                layer_idx = -l
+                net_output["encoder_out"] = net_output_list[layer_idx]
+                loss_l, nll_loss_l = self.compute_loss(model, net_output, sample, reduce=reduce)
+                loss += loss_weight_list[layer_idx] * loss_l
+                nll_loss += loss_weight_list[layer_idx] * nll_loss_l
+            net_output["encoder_out"] = net_output_list[-1]  #最后一层的结果放在最后，保持和只计算一层的loss时相同的结果，方便计算acc
+            loss_l, nll_loss_l = self.compute_loss(model, net_output, sample, reduce=reduce)
+            loss += loss_weight_list[-1] * loss_l
+            nll_loss += loss_weight_list[-1] * nll_loss_l
+        else:
+            if hasattr(model, 'w2v_encoder'):  #对于hubert_asr类型，里面的encoder输出为TBC,需要转为BTC
+                net_output["encoder_out"] = net_output["encoder_out"].transpose(0, 1) # T x B x C -> B x T x C
+            feat_tsz = net_output["encoder_out"].size(1)  # B x T x C
+            targ_tsz = sample["target"].size(1)  # B x T
+            if (feat_tsz != targ_tsz):  # 分类任务，标签数量和特征数量接近，不会差很多
+                import torch
+                target_inds = torch.arange(feat_tsz).long()  # 对标签进行采样
+                # 这里为了避免对齐之后的标签越界，将超过标签长度的idx替换成最后一个标签序号
+                target_inds[target_inds >= targ_tsz] = targ_tsz - 1
+                sample["target"] = sample["target"][:, target_inds]
+
+            loss, nll_loss = self.compute_loss(model, net_output, sample, reduce=reduce)
+
         sample_size = (
             sample["target"].size(0) if self.sentence_avg else sample["ntokens"]
         )

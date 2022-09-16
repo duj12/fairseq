@@ -126,8 +126,6 @@ def dump_label(ckpt_path, layer, tsv_dir, split, km_path, nshard, rank, lab_dir,
     with open(lab_path, "w") as f:
         for path, nsample in tqdm.tqdm(iterator, total=num):
             feat = reader.get_feats(path, nsample)
-            if torch.cuda.is_available():
-                feat = torch.from_numpy(feat).cuda()
             lab = apply_kmeans(feat).tolist()
             f.write(" ".join(map(str, lab)) + "\n")
             f.flush()
@@ -147,7 +145,6 @@ def thread_dump_label(ckpt_path, layer, tsv_dir, split, km_path, nshard, rank, l
         with open(lab_path, "w") as f:
             for path, nsample in tqdm.tqdm(iterator, total=num):
                 feat = reader.get_feats(path, nsample)
-                # feat = torch.from_numpy(feat).cuda()
                 lab = apply_kmeans(feat).tolist()
                 f.write(" ".join(map(str, lab)) + "\n")
                 f.flush()
@@ -177,5 +174,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     logging.info(str(args))
 
-    #dump_label(**vars(args))
-    thread_dump_label(**vars(args))
+    if args.rank != args.nshard:
+        dump_label(**vars(args))
+    else:
+        thread_dump_label(**vars(args))

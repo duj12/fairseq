@@ -262,7 +262,7 @@ class HubertModel(BaseFairseqModel):
             mode=cfg.extractor_mode,
             conv_bias=cfg.conv_bias,
         )
-        feature_ds_rate = np.prod([s for _, _, s in feature_enc_layers])
+        feature_ds_rate = np.prod([s[2] for s in feature_enc_layers])
         self.use_multiple_frame_rate_label = False
         if hasattr(cfg, 'use_multiple_frame_rate_label'):
             self.use_multiple_frame_rate_label = cfg.use_multiple_frame_rate_label

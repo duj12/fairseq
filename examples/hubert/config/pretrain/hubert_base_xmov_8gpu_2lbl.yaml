@@ -35,10 +35,10 @@ task:
   min_sample_size: 16000  # 这个是保留音频的最小采样点数，低于的音频不参与训练
   pad_audio: false
   random_crop: true
-  normalize: false # must be consistent with extractor # 配合extractor_mode
+  normalize: true #false # must be consistent with extractor # 配合extractor_mode
 
 dataset:
-  num_workers: 6
+  num_workers: 0
   max_tokens: 1400000
   skip_invalid_size_inputs_valid_test: true
   validate_interval: 5
@@ -51,8 +51,8 @@ criterion:
   loss_weights: [10,]
 
 optimization:
-  max_update: 600000
-  lr: [0.001]   #conformer参数增多，学习率从5e-4提升到1e-3
+  max_update: 400000
+  lr: [0.0005]   #conformer参数增多，学习率从5e-4提升到1e-3
   # 使用多标签，模型训练容易发生梯度爆炸，因此使用了2e-4学习率，并且梯度裁剪值10->5
   # 多标签模型无论是使用预训练参数还是随机初始化，都容易发生梯度爆炸
   # 训练ppg标签模型，将学习率调整到5e-4
@@ -75,7 +75,7 @@ model:
   skip_masked: false
   skip_nomask: false
   mask_prob: 0.80
-  extractor_mode: default
+  extractor_mode: layer_norm #default
   conv_feature_layers: '[(512,10,5)] + [(512,3,5)] + [(512,3,2)] + [(512,2,2)] * 2'   #5层，200倍降采样
   final_dim: 256
 

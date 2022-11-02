@@ -833,12 +833,16 @@ class ConvFeatureExtractionModel(nn.Module):
             n_out,
             k,
             stride,
+            padding=0,
             is_layer_norm=False,
             is_group_norm=False,
             conv_bias=False,
         ):
             def make_conv():
-                conv = nn.Conv1d(n_in, n_out, k, stride=stride, bias=conv_bias)
+                conv = nn.Conv1d(n_in, n_out, k,
+                                 stride=stride,
+                                 padding=padding,
+                                 bias=conv_bias)
                 nn.init.kaiming_normal_(conv.weight)
                 return conv
 
@@ -870,8 +874,13 @@ class ConvFeatureExtractionModel(nn.Module):
         in_d = 1
         self.conv_layers = nn.ModuleList()
         for i, cl in enumerate(conv_layers):
-            assert len(cl) == 3, "invalid conv definition: " + str(cl)
-            (dim, k, stride) = cl
+            # DuJing: support padding
+            assert len(cl) == 3 or len(cl)==4, "invalid conv definition: " + str(cl)
+            if len(cl) ==3:
+                (dim, k, stride) = cl
+                padding=0
+            elif len(cl) == 4:
+                (dim, k, stride, padding) = cl
 
             self.conv_layers.append(
                 block(
@@ -879,6 +888,7 @@ class ConvFeatureExtractionModel(nn.Module):
                     dim,
                     k,
                     stride,
+                    padding=padding,
                     is_layer_norm=mode == "layer_norm",
                     is_group_norm=mode == "default" and i == 0,
                     conv_bias=conv_bias,

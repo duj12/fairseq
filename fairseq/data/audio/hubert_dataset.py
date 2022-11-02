@@ -337,7 +337,8 @@ class HubertDataset(FairseqDataset):
         return self.size(index)
 
     def size(self, index):
-        if self.pad_audio:
+        #if self.pad_audio:  this will cause AssertionError: Sentences lengths should not exceed max_tokens=xxxxxx
+        if not self.random_crop:
             return self.sizes[index]
         return min(self.sizes[index], self.max_sample_size)
 

@@ -8,7 +8,7 @@ common:
   tensorboard_logdir: tblog
 
 checkpoint:
-  save_interval_updates: 10000
+  save_interval_updates: 5000
   keep_interval_updates: 1
   keep_best_checkpoints: 5
   no_epoch_checkpoints: true
@@ -17,7 +17,7 @@ checkpoint:
 distributed_training:
   ddp_backend: no_c10d
   distributed_backend: 'nccl'
-  distributed_world_size: 8   #这个参数用于指定卡数
+  distributed_world_size: 4   #这个参数用于指定卡数
   #distributed_port: 29671  #这个参数用于多机训练,单机训练使用默认值-1
   nprocs_per_node: 8
   find_unused_parameters: true
@@ -28,18 +28,18 @@ task:
   data: ???
   label_dir: ???
   labels: ???
-  label_rate: ???
+  label_rate: 80
   sample_rate: 16000
   max_sample_size: 250000  # 这个是实际训练时最大的chunk_size，超长音频会被切分, 只留下一个chunk用于训练
+  min_sample_size: 16000   # 这个是保留音频的最小采样点数，低于的音频不参与训练
   # max_keep_size: 320000  # 这个是保留音频的最大采样点数，超过的音频不参与训练
-  min_sample_size: 16000  # 这个是保留音频的最小采样点数，低于的音频不参与训练
   pad_audio: false
   random_crop: true
-  normalize: false # must be consistent with extractor # 配合extractor_mode
+  normalize: true # must be consistent with extractor # 配合extractor_mode
 
 dataset:
-  num_workers: 6
-  max_tokens: 1400000
+  num_workers: 0  # 6 加载大数据集时报错_pickle.PicklingError
+  max_tokens: 1500000
   skip_invalid_size_inputs_valid_test: true
   validate_interval: 5
   validate_interval_updates: 10000
@@ -51,13 +51,12 @@ criterion:
   loss_weights: [10,]
 
 optimization:
-  max_update: 400000
-  lr: [0.001]   #conformer参数增多，学习率从5e-4提升到1e-3
-  # 使用多标签，模型训练容易发生梯度爆炸，因此使用了2e-4学习率，并且梯度裁剪值10->5
+  max_update: 600000
+  lr: [0.0005]
   # 多标签模型无论是使用预训练参数还是随机初始化，都容易发生梯度爆炸
-  # 训练ppg标签模型，将学习率调整到5e-4
-  clip_norm: 10.0
-  update_freq: [4]  #8卡模拟32卡
+  # 三标签模型，cnn中增加layer_norm, encoder中layer_norm前移，取消dropout
+  clip_norm: 1.0  #从10.0降低到1.0
+  update_freq: [8]  #8卡模拟32卡
 
 optimizer:
   _name: adam
@@ -75,7 +74,7 @@ model:
   skip_masked: false
   skip_nomask: false
   mask_prob: 0.80
-  extractor_mode: default
+  extractor_mode: layer_norm #default  改为layer_norm
   conv_feature_layers: '[(512,10,5)] + [(512,3,5)] + [(512,3,2)] + [(512,2,2)] * 2'   #5层，200倍降采样
   final_dim: 256
 
@@ -84,12 +83,19 @@ model:
   attn_type: espnet
   pos_enc_type: rope   #将默认的绝对位置编码改成旋转位置编码
 
-  encoder_layerdrop: 0.05
-  dropout_input: 0.1
-  dropout_features: 0.1
-  dropout: 0.1
-  attention_dropout: 0.1
-  feature_grad_mult: 0.1
+  #encoder_layerdrop: 0.05
+  #dropout_input: 0.1
+  #dropout_features: 0.1
+  #dropout: 0.1
+  #attention_dropout: 0.1
+  #feature_grad_mult: 0.1
+  encoder_layerdrop: 0.0
+  dropout_input: 0.0
+  dropout_features: 0.0
+  dropout: 0.0
+  attention_dropout: 0.0
+  layer_norm_first: true
+  feature_grad_mult: 1.0
   untie_final_proj: true
   activation_dropout: 0.0
 

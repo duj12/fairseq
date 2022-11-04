@@ -118,7 +118,10 @@ class HubertPretrainingConfig(FairseqDataclass):
         default=False,
         metadata={"help": "pad audio to the longest one in the batch if true"},
     )
-
+    sort_batch_in_length: Optional[bool] = field(
+        default=True,
+        metadata={"help": "whether to sort batch in length(decreasing)."},
+    )
 
 @register_task("hubert_pretraining", dataclass=HubertPretrainingConfig)
 class HubertPretrainingTask(FairseqTask):
@@ -215,6 +218,7 @@ class HubertPretrainingTask(FairseqTask):
             store_labels=False,
             random_crop=self.cfg.random_crop,
             single_target=self.cfg.single_target,
+            sort_batch_in_length=self.cfg.sort_batch_in_length,
         )
 
     def max_positions(self) -> Tuple[int, int]:

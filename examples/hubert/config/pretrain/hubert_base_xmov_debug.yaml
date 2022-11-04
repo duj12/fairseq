@@ -12,12 +12,12 @@ checkpoint:
   keep_interval_updates: 1
   keep_best_checkpoints: 5
   no_epoch_checkpoints: true
-
+  reset_dataloader: true
 
 distributed_training:
   ddp_backend: no_c10d
   distributed_backend: 'nccl'
-  distributed_world_size: 2   #这个参数用于指定卡数
+  distributed_world_size: 1   #这个参数用于指定卡数
   #distributed_port: 29671  #这个参数用于多机训练,单机训练使用默认值-1
   nprocs_per_node: 8
   find_unused_parameters: true
@@ -36,6 +36,7 @@ task:
   pad_audio: true #false
   random_crop: true
   normalize: true #false # must be consistent with extractor # 配合extractor_mode
+  sort_batch_in_length: false   # 生成batch时是否对时长排序
 
 dataset:
   num_workers: 0
@@ -43,6 +44,7 @@ dataset:
   skip_invalid_size_inputs_valid_test: true
   validate_interval: 5
   validate_interval_updates: 10000
+
 
 criterion:
   _name: hubert
@@ -73,7 +75,7 @@ model:
   skip_nomask: false
   mask_prob: 0.80
   extractor_mode: layer_norm #default
-  conv_feature_layers: '[(512,10,5)] + [(512,3,5)] + [(512,3,2)] + [(512,2,2)] * 2'   #5层，200倍降采样
+  conv_feature_layers: '[(512,10,5,10)] + [(512,3,5)] + [(512,3,2)] + [(512,2,2)] * 2'   #5层，200倍降采样
   final_dim: 256
 
   layer_type: "conformer"   #transformer->conformer

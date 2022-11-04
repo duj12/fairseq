@@ -36,10 +36,11 @@ task:
   pad_audio: true   #从false改为true
   random_crop: true
   normalize: true #false # must be consistent with extractor # 配合extractor_mode
+  sort_batch_in_length: false   # 生成batch时是否对时长排序
 
 dataset:
   num_workers: 0
-  max_tokens: 1200000
+  max_tokens: 1600000
   skip_invalid_size_inputs_valid_test: true
   validate_interval: 5
   validate_interval_updates: 10000

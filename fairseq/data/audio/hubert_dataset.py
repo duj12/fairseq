@@ -131,6 +131,7 @@ class HubertDataset(FairseqDataset):
         store_labels: bool = True,
         random_crop: bool = False,
         single_target: bool = False,
+        sort_batch_in_length: bool = True,
     ):
         self.audio_root, self.audio_names, inds, tot, self.sizes = load_audio(
             manifest_path, max_keep_sample_size, min_keep_sample_size
@@ -138,6 +139,7 @@ class HubertDataset(FairseqDataset):
         self.sample_rate = sample_rate
         self.shuffle = shuffle
         self.random_crop = random_crop
+        self.sort_batch_in_length = sort_batch_in_length
 
         self.num_labels = len(label_paths)
         self.pad_list = pad_list
@@ -170,7 +172,8 @@ class HubertDataset(FairseqDataset):
         self.normalize = normalize
         logger.info(
             f"pad_audio={pad_audio}, random_crop={random_crop}, "
-            f"normalize={normalize}, max_sample_size={self.max_sample_size}"
+            f"normalize={normalize}, max_sample_size={self.max_sample_size}, "
+            f"sort_batch_in_length={sort_batch_in_length}"
         )
 
     def get_audio(self, index):
@@ -347,6 +350,10 @@ class HubertDataset(FairseqDataset):
             order = [np.random.permutation(len(self))]
         else:
             order = [np.arange(len(self))]
+
+        # to support batch without length decreasing.
+        if not self.sort_batch_in_length:
+            return order[0]
 
         order.append(self.sizes)
         return np.lexsort(order)[::-1]

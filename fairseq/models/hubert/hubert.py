@@ -443,7 +443,9 @@ class HubertModel(BaseFairseqModel):
         if extra > 0:
             padding_mask = padding_mask[:, :-extra]
         padding_mask = padding_mask.view(padding_mask.size(0), features.size(1), -1)
-        padding_mask = padding_mask.all(-1)
+        # BUGFIX: the shorter wave in a batch may has a extra frame(when sample_count//hop_len>0)
+        # padding_mask = padding_mask.all(-1)
+        padding_mask = padding_mask.any(-1)
         return padding_mask
 
     def forward(
@@ -480,7 +482,8 @@ class HubertModel(BaseFairseqModel):
             x, mask_indices = self.apply_mask(features, padding_mask, target_list)
         else:
             x = features
-            mask_indices = None
+            #mask_indices = None
+            mask_indices = torch.BoolTensor(padding_mask.shape).fill_(False).to(padding_mask)
 
         # feature: (B, T, D), float
         # target: (B, T), long
